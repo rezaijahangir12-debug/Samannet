@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from flask import Flask, abort, redirect, render_template_string, request, session, url_for
 import sqlite3
+import os
 import uuid
 
 app = Flask(__name__)
@@ -152,12 +153,12 @@ HTML_TEMPLATE = """
                     <div class="row">
                         <div>
                             <label>حجم (GB):</label>
-                            <input type="text" id="traffic" name="traffic" placeholder="مثال: 50" required>
+                            <input type="text" id="traffic" name="traffic" value="نامحدود" required>
                             <button type="button" class="btn-unlimited" onclick="setUnlimited('traffic', this)">∞ نامحدود</button>
                         </div>
                         <div>
                             <label>زمان (روز):</label>
-                            <input type="text" id="days" name="days" placeholder="مثال: 30" required>
+                            <input type="text" id="days" name="days" value="30" required>
                             <button type="button" class="btn-unlimited" onclick="setUnlimited('days', this)">∞ نامحدود</button>
                         </div>
                     </div>
@@ -178,7 +179,7 @@ HTML_TEMPLATE = """
                                 <button type="submit" class="delete-btn">حذف 🗑</button>
                             </form>
                             <strong>🏷 نام:</strong> {{ c[1] }}<br>
-                            <strong>📊 حجم:</strong> {{ c[3] }} GB | <strong>⏳ زمان:</strong> {{ c[4] }} روز<br>
+                            <strong>📊 حجم:</strong> {{ c[3] }} | <strong>⏳ زمان:</strong> {{ c[4] }}<br>
                             <strong>👥 ظرفیت:</strong> {{ c[5] }} کاربر | <strong>📅 انقضا:</strong> {{ c[8] }}<br>
                             <strong>وضعیت:</strong> 
                             {% if c[9] == 'active' %}<span class="badge badge-active">فعال ✅</span>
@@ -214,14 +215,12 @@ HTML_TEMPLATE = """
         function setUnlimited(fieldId, btn) {
             const field = document.getElementById(fieldId);
             if (field.value === 'نامحدود') {
-                field.value = '';
-                field.disabled = false;
+                field.value = '30';
                 btn.style.backgroundColor = '#1e293b';
                 btn.style.color = '#38bdf8';
                 btn.innerText = '∞ نامحدود';
             } else {
                 field.value = 'نامحدود';
-                field.disabled = false; /* اجازه ارسال فرم حتی وقتی نامحدود است */
                 btn.style.backgroundColor = '#10b981';
                 btn.style.color = '#fff';
                 btn.innerText = '✓ فعال (نامحدود)';
@@ -258,9 +257,9 @@ def create_config():
     if not session.get("logged_in"):
         return redirect(url_for("index"))
     
-    name = request.form.get("config_name")
+    name = request.form.get("config_name", "Saman")
     traffic = request.form.get("traffic", "نامحدود")
-    days = request.form.get("days", "نامحدود")
+    days_input = request.form.get("days", "30")
     users = request.form.get("users_count", "1")
     
     host_url = request.host
@@ -269,11 +268,13 @@ def create_config():
     sub_link = f"https://{host_url}/sub/{config_uuid}"
     raw_config = f"vless://{config_uuid}@{host_url}:443?encryption=none&security=tls&type=ws&path=%2F#{name}"
     
-    if days and days != 'نامحدود':
+    if days_input and days_input != 'نامحدود':
         try:
-            expiry_date = (datetime.now() + timedelta(days=int(days))).strftime('%Y-%m-%d %H:%M')
+            days_int = int(days_input)
+            expiry_date = (datetime.now() + timedelta(days=days_int)).strftime('%Y-%m-%d %H:%M')
         except ValueError:
             expiry_date = "30 روزه"
+            days_input = "30"
     else:
         expiry_date = "دائم / نامحدود"
         
@@ -282,7 +283,7 @@ def create_config():
     cursor.execute("""
         INSERT INTO configs (name, uuid, traffic, days, users, sub_link, raw_config, expiry_date, status) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (name, config_uuid, traffic, days, users, sub_link, raw_config, expiry_date, 'active'))
+    """, (name, config_uuid, traffic, str(days_input), users, sub_link, raw_config, expiry_date, 'active'))
     conn.commit()
     conn.close()
     
@@ -297,11 +298,11 @@ def subscription(config_uuid):
     conn.close()
     
     if not res:
-        abort(404, description="کانفیگ یافت نشد یا منقضی شده است.")
+        abort(404, description="کانفیگ یافت نشد.")
     
     raw_cfg, status = res
     if status == 'expired':
-        return "Config Expired / منقضی شده", 403
+        return "Config Expired", 403
         
     return raw_cfg
 
@@ -319,4 +320,5 @@ def delete_config(config_id):
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
