@@ -38,7 +38,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>پنل اختصاصی ساخت کانفیگ - سامان</title>
+    <title>پنل هسته هوشمند Vless - سامان</title>
     <style>
         :root {
             --bg-color: #050b14;
@@ -143,12 +143,12 @@ HTML_TEMPLATE = """
         {% if session.get('logged_in') %}
             <div class="card">
                 <a href="/logout" class="logout">خروج 🚪</a>
-                <h2>⚡ پنل ساخت کانفیگ زنده</h2>
-                <p style="color: #94a3b8; font-size: 11px;">مدیر سیستم: <b>Saman550</b></p>
+                <h2>⚡ پنل هوشمند تشخیص پورت ریلی</h2>
+                <p style="color: #94a3b8; font-size: 11px;">مدیر سیستم: <b>Saman550</b> | پورت فعال: <span style="color: #38bdf8;">{{ active_port }}</span></p>
                 
                 <form method="POST" action="/create">
                     <label>نام کانفیگ:</label>
-                    <input type="text" name="config_name" placeholder="مثال: Saman-VIP-1" required>
+                    <input type="text" name="config_name" value="Saman-Auto" required>
 
                     <div class="row">
                         <div>
@@ -166,12 +166,12 @@ HTML_TEMPLATE = """
                     <label>ظرفیت کاربران همزمان:</label>
                     <input type="number" name="users_count" value="1" min="1" required>
 
-                    <button type="submit">🚀 تولید کانفیگ و لینک اشتراک</button>
+                    <button type="submit">🚀 ساخت کانفیگ با پورت خودکار</button>
                 </form>
             </div>
 
             <div class="card">
-                <h3>📋 لیست کانفیگ‌های ساخته شده ({{ configs|length }})</h3>
+                <h3>📋 لیست کانفیگ‌ها ({{ configs|length }})</h3>
                 {% if configs %}
                     {% for c in configs %}
                         <div class="config-box {% if c[9] == 'expired' %}expired{% endif %}">
@@ -180,23 +180,22 @@ HTML_TEMPLATE = """
                             </form>
                             <strong>🏷 نام:</strong> {{ c[1] }}<br>
                             <strong>📊 حجم:</strong> {{ c[3] }} | <strong>⏳ زمان:</strong> {{ c[4] }}<br>
-                            <strong>👥 ظرفیت:</strong> {{ c[5] }} کاربر | <strong>📅 انقضا:</strong> {{ c[8] }}<br>
                             <strong>وضعیت:</strong> 
                             {% if c[9] == 'active' %}<span class="badge badge-active">فعال ✅</span>
                             {% else %}<span class="badge badge-expired">منقضی ❌</span>{% endif %}<br>
-                            <strong>🔗 لینک اشتراک (Sub Link):</strong>
+                            <strong>🔗 لینک اشتراک:</strong>
                             <code>{{ c[6] }}</code>
-                            <strong>⚙️ کانفیگ اختصاصی (Vless):</strong>
+                            <strong>⚙️ کانفیگ خودکار Vless:</strong>
                             <code>{{ c[7] }}</code>
                         </div>
                     {% endfor %}
                 {% else %}
-                    <p style="color: #475569; text-align: center; font-size: 13px;">هنوز هیچ کانفیگی ساخته نشده است.</p>
+                    <p style="color: #475569; text-align: center; font-size: 13px;">هنوز کانفیگی ساخته نشده است.</p>
                 {% endif %}
             </div>
         {% else %}
             <div class="card" style="margin-top: 30px;">
-                <h2>🔒 ورود امن به پنل سامان</h2>
+                <h2>🔒 ورود به پنل سامان</h2>
                 {% if error %}
                     <p style="color: var(--danger); font-size: 12px;">{{ error }}</p>
                 {% endif %}
@@ -231,6 +230,9 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# تشخیص خودکار پورت اختصاصی تخصیص داده شده توسط Railway
+DETECTED_PORT = int(os.environ.get("PORT", 5000))
+
 @app.route("/")
 def index():
     conn = sqlite3.connect('configs.db', check_same_thread=False)
@@ -238,14 +240,14 @@ def index():
     cursor.execute("SELECT * FROM configs ORDER BY id DESC")
     configs = cursor.fetchall()
     conn.close()
-    return render_template_string(HTML_TEMPLATE, configs=configs)
+    return render_template_string(HTML_TEMPLATE, configs=configs, active_port=DETECTED_PORT)
 
 @app.route("/login", methods=["POST"])
 def login():
     if request.form.get("username") == ADMIN_USERNAME and request.form.get("password") == ADMIN_PASSWORD:
         session["logged_in"] = True
         return redirect(url_for("index"))
-    return render_template_string(HTML_TEMPLATE, error="نام کاربری یا رمز عبور اشتباه است!", configs=[])
+    return render_template_string(HTML_TEMPLATE, error="نام کاربری یا رمز عبور اشتباه است!", configs=[], active_port=DETECTED_PORT)
 
 @app.route("/logout")
 def logout():
@@ -262,11 +264,13 @@ def create_config():
     days_input = request.form.get("days", "30")
     users = request.form.get("users_count", "1")
     
-    host_url = request.host
+    host_url = request.host.split(':')[0]
     config_uuid = str(uuid.uuid4())
     
-    sub_link = f"https://{host_url}/sub/{config_uuid}"
-    raw_config = f"vless://{config_uuid}@{host_url}:443?encryption=none&security=tls&type=ws&path=%2F#{name}"
+    sub_link = f"https://{request.host}/sub/{config_uuid}"
+    
+    # تولید لینک Vless کاملاً پویا منطبق بر پورتی که ریلی به صورت خودکار تخصیص داده است
+    raw_config = f"vless://{config_uuid}@{host_url}:{DETECTED_PORT}?encryption=none&security=tls&type=ws&path=%2F#{name}"
     
     if days_input and days_input != 'نامحدود':
         try:
@@ -320,5 +324,4 @@ def delete_config(config_id):
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=DETECTED_PORT)
