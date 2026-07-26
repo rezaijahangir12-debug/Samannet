@@ -9,7 +9,6 @@ app.secret_key = "saman_nightfair_ultimate_production_key"
 ADMIN_USERNAME = "Saman550"
 ADMIN_PASSWORD = "0090"
 
-# راه‌اندازی دیتابیس پیشرفته با قابلیت ذخیره UUID و پروتکل‌ها
 def init_db():
     conn = sqlite3.connect('configs.db', check_same_thread=False)
     cursor = conn.cursor()
@@ -32,7 +31,6 @@ def init_db():
 
 init_db()
 
-# قالب HTML/CSS بسیار مدرن و ریسپانسیو
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -223,7 +221,7 @@ HTML_TEMPLATE = """
                 btn.innerText = '∞ نامحدود';
             } else {
                 field.value = 'نامحدود';
-                field.disabled = true;
+                field.disabled = false; /* اجازه ارسال فرم حتی وقتی نامحدود است */
                 btn.style.backgroundColor = '#10b981';
                 btn.style.color = '#fff';
                 btn.innerText = '✓ فعال (نامحدود)';
@@ -261,21 +259,17 @@ def create_config():
         return redirect(url_for("index"))
     
     name = request.form.get("config_name")
-    traffic = request.form.get("traffic")
-    days = request.form.get("days")
-    users = request.form.get("users_count")
+    traffic = request.form.get("traffic", "نامحدود")
+    days = request.form.get("days", "نامحدود")
+    users = request.form.get("users_count", "1")
     
-    # گرفتن دامین واقعی سرور از روی هدر درخواست (برای اینکه لینک‌های تولید شده دقیقاً روی دامین ریلی شما کار کنند)
     host_url = request.host
-    
-    # تولید UUID اختصاصی برای کانفیگ Vless
     config_uuid = str(uuid.uuid4())
     
-    # ساخت لینک ساب و کانفیگ واقعی Vless با هاست سرور شما
     sub_link = f"https://{host_url}/sub/{config_uuid}"
     raw_config = f"vless://{config_uuid}@{host_url}:443?encryption=none&security=tls&type=ws&path=%2F#{name}"
     
-    if days != 'نامحدود':
+    if days and days != 'نامحدود':
         try:
             expiry_date = (datetime.now() + timedelta(days=int(days))).strftime('%Y-%m-%d %H:%M')
         except ValueError:
@@ -294,7 +288,6 @@ def create_config():
     
     return redirect(url_for("index"))
 
-# مسیر خروجی لینک ساب (Subscription endpoint) جهت اتصال مستقیم به اپلیکیشن‌ها
 @app.route("/sub/<config_uuid>")
 def subscription(config_uuid):
     conn = sqlite3.connect('configs.db', check_same_thread=False)
